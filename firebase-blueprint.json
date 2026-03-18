@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "Car": {
+      "title": "Car",
+      "description": "A vehicle in the dealership inventory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "brand": { "type": "string" },
+        "model": { "type": "string" },
+        "name": { "type": "string" },
+        "year": { "type": "number" },
+        "price": { "type": "number" },
+        "priceDiscount": { "type": "number" },
+        "mainImage": { "type": "string" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "fuelType": { "type": "string", "enum": ["Petrol", "Diesel", "Electric", "Hybrid", "CNG"] },
+        "transmission": { "type": "string", "enum": ["Automatic", "Manual"] },
+        "ownerType": { "type": "string", "enum": ["1st Owner", "2nd Owner", "3rd Owner", "4th+ Owner"] },
+        "distanceTravelled": { "type": "number" },
+        "engineCapacity": { "type": "number" },
+        "mileage": { "type": "number" },
+        "seats": { "type": "number" },
+        "color": { "type": "string" },
+        "registrationState": { "type": "string" },
+        "numberPlate": { "type": "string" },
+        "insuranceStatus": { "type": "string" },
+        "serviceHistory": { "type": "string" },
+        "accidentHistory": { "type": "boolean" },
+        "loanAvailability": { "type": "boolean" },
+        "isNew": { "type": "boolean" },
+        "isOffer": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["Available", "Sold", "Featured", "Hot Deal"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "brand", "model", "name", "year", "price", "mainImage", "fuelType", "transmission", "ownerType", "distanceTravelled", "engineCapacity", "mileage", "seats", "color", "registrationState", "numberPlate", "insuranceStatus", "serviceHistory", "status"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A customer's visit booking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "carId": { "type": "string" },
+        "carName": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "name": { "type": "string" },
+        "mobile": { "type": "string" },
+        "email": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "Confirmed", "Sold", "Cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "carId", "carName", "date", "time", "name", "mobile", "email", "status"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "A customer who has booked a visit",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "registeredAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "email", "phone", "registeredAt"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Dealership settings",
+      "type": "object",
+      "properties": {
+        "dealershipName": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "workingHours": { "type": "string" }
+      },
+      "required": ["dealershipName", "phone", "whatsapp", "email", "address", "workingHours"]
+    }
+  },
+  "firestore": {
+    "cars": {
+      "schema": "Car",
+      "description": "Collection of all cars in inventory"
+    },
+    "bookings": {
+      "schema": "Booking",
+      "description": "Collection of all customer bookings"
+    },
+    "customers": {
+      "schema": "Customer",
+      "description": "Collection of all customers"
+    },
+    "settings": {
+      "schema": "Settings",
+      "description": "Singleton collection for dealership settings"
+    }
+  }
+}

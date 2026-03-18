@@ -1,0 +1,5 @@
+{
+  "name": "LuxeMotors Dealership",
+  "description": "A premium car dealership website with a dark theme, featuring a public inventory, detailed car pages with EMI calculator, and an admin dashboard for managing vehicles, settings, and broadcasting messages.",
+  "requestFramePermissions": []
+}
