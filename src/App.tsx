@@ -16,6 +16,7 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminInventory } from './pages/admin/AdminInventory';
 import { AdminBroadcast } from './pages/admin/AdminBroadcast';
 import { AdminSettings } from './pages/admin/AdminSettings';
+import { AdminCustomers } from './pages/admin/AdminCustomers';
 import { AdminRoute } from './components/AdminRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -59,6 +60,7 @@ export default function App() {
               <Route element={<AdminLayout />}>
                 <Route index element={<AdminDashboard />} />
                 <Route path="inventory" element={<AdminInventory />} />
+                <Route path="customers" element={<AdminCustomers />} />
                 <Route path="broadcast" element={<AdminBroadcast />} />
                 <Route path="settings" element={<AdminSettings />} />
               </Route>

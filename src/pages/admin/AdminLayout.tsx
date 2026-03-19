@@ -1,13 +1,22 @@
 import React from 'react';
-import { Link, Outlet, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Car, MessageSquare, Settings, LogOut } from 'lucide-react';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Car, MessageSquare, Settings, LogOut, Users } from 'lucide-react';
+import { useAppContext } from '../../context/AppContext';
 
 export const AdminLayout: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useAppContext();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
 
   const navItems = [
     { name: 'Dashboard', path: '/admin', icon: LayoutDashboard },
     { name: 'Inventory', path: '/admin/inventory', icon: Car },
+    { name: 'Customers', path: '/admin/customers', icon: Users },
     { name: 'Broadcast', path: '/admin/broadcast', icon: MessageSquare },
     { name: 'Settings', path: '/admin/settings', icon: Settings },
   ];
@@ -43,20 +52,27 @@ export const AdminLayout: React.FC = () => {
             );
           })}
           
-          <Link
-            to="/"
+          <button
+            onClick={handleLogout}
             className="flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-3 p-2 md:px-4 md:py-3 rounded-xl font-medium text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors md:hidden"
           >
             <LogOut className="w-6 h-6 md:w-5 md:h-5" />
-          </Link>
+          </button>
         </nav>
 
         <div className="hidden md:block p-4 border-t border-zinc-800">
-          <Link
-            to="/"
-            className="flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors w-full"
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-rose-400 hover:bg-rose-500/10 transition-colors w-full"
           >
             <LogOut className="w-5 h-5" />
+            Sign Out
+          </button>
+          <Link
+            to="/"
+            className="flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors w-full mt-2"
+          >
+            <Car className="w-5 h-5" />
             Back to Site
           </Link>
         </div>

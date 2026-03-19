@@ -1,39 +1,28 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import { LogIn } from 'lucide-react';
-import { auth } from '../firebase';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { Lock, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export const AdminRoute: React.FC = () => {
-  const { user, isAdmin } = useAppContext();
+  const { isAdmin, isAuthReady, login, logout } = useAppContext();
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
-  const handleLogin = async () => {
-    const provider = new GoogleAuthProvider();
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (error) {
-      console.error("Error signing in:", error);
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    const success = login(password);
+    if (!success) {
+      setLoginError('Incorrect password. Please try again.');
     }
   };
 
-  if (!user) {
+  if (!isAuthReady) {
     return (
       <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4">
-        <div className="bg-zinc-900 p-8 rounded-2xl border border-zinc-800 text-center max-w-md w-full">
-          <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-            <LogIn className="w-8 h-8 text-emerald-500" />
-          </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Admin Access</h2>
-          <p className="text-zinc-400 mb-8">Please sign in to access the admin dashboard.</p>
-          <button 
-            onClick={handleLogin}
-            className="w-full py-3 bg-white text-black rounded-xl font-bold hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2"
-          >
-            <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
-            Sign in with Google
-          </button>
-        </div>
+        <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" />
+        <p className="text-zinc-400 mt-4 font-medium">Checking authentication...</p>
       </div>
     );
   }
@@ -42,14 +31,49 @@ export const AdminRoute: React.FC = () => {
     return (
       <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4">
         <div className="bg-zinc-900 p-8 rounded-2xl border border-zinc-800 text-center max-w-md w-full">
-          <h2 className="text-2xl font-bold text-white mb-2">Access Denied</h2>
-          <p className="text-zinc-400 mb-8">You do not have permission to access this area.</p>
-          <button 
-            onClick={() => auth.signOut()}
-            className="w-full py-3 bg-zinc-800 text-white rounded-xl font-bold hover:bg-zinc-700 transition-colors"
-          >
-            Sign Out
-          </button>
+          <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Lock className="w-8 h-8 text-emerald-500" />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">Admin Access</h2>
+          <p className="text-zinc-400 mb-8">Enter the admin password to access the dashboard.</p>
+          
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="relative">
+              <input 
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className="w-full bg-zinc-800 border border-zinc-700 text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all pr-12"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"
+              >
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
+
+            {loginError && (
+              <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-xl flex items-start gap-3 text-left">
+                <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+                <p className="text-rose-500 text-sm">{loginError}</p>
+              </div>
+            )}
+
+            <button 
+              type="submit"
+              className="w-full py-3 bg-white text-black rounded-xl font-bold hover:bg-zinc-200 transition-colors"
+            >
+              Sign In
+            </button>
+          </form>
+          
+          <p className="text-zinc-500 text-xs mt-6">
+            Contact the system administrator if you've forgotten the password.
+          </p>
         </div>
       </div>
     );

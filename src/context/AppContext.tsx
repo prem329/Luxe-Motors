@@ -4,6 +4,7 @@ import { mockCars, initialSettings, mockBookings, mockCustomers } from '../data/
 import { db, auth } from '../firebase';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDoc, query, orderBy } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import { getApiUrl } from '../utils/api';
 
 enum OperationType {
   CREATE = 'create',
@@ -64,6 +65,9 @@ interface AppContextType {
   savedCars: string[];
   user: User | null;
   isAdmin: boolean;
+  isAuthReady: boolean;
+  login: (password: string) => boolean;
+  logout: () => void;
   addCar: (car: Car) => void;
   updateCar: (car: Car) => void;
   deleteCar: (id: string) => void;
@@ -76,23 +80,22 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [cars, setCars] = useState<Car[]>(mockCars);
+  const [cars, setCars] = useState<Car[]>([]);
   const [settings, setSettings] = useState<DealershipSettings>(initialSettings);
-  const [bookings, setBookings] = useState<Booking[]>(mockBookings);
-  const [customers, setCustomers] = useState<Customer[]>(mockCustomers);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [savedCars, setSavedCars] = useState<string[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      const adminEmail = import.meta.env.VITE_ADMIN_EMAIL || 'premsai58008@gmail.com';
-      setIsAdmin(currentUser?.email === adminEmail);
-      setIsAuthReady(true);
-    });
-    return () => unsubscribe();
+    // Simple session persistence
+    const adminSession = localStorage.getItem('adminSession');
+    if (adminSession === 'true') {
+      setIsAdmin(true);
+    }
+    setIsAuthReady(true);
   }, []);
 
   useEffect(() => {
@@ -100,9 +103,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // Load Cars
     const carsUnsubscribe = onSnapshot(collection(db, 'cars'), (snapshot) => {
-      if (!snapshot.empty) {
-        setCars(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Car)));
-      }
+      const carsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Car));
+      // If Firestore is empty, we can optionally bootstrap with mock data
+      // but for now, let's just show what's in Firestore
+      setCars(carsData);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'cars');
     });
@@ -127,15 +131,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Load Bookings & Customers only for Admin
     if (isAdmin) {
       bookingsUnsubscribe = onSnapshot(collection(db, 'bookings'), (snapshot) => {
-        if (!snapshot.empty) {
-          setBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking)));
-        }
+        const bookingsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+        setBookings(bookingsData);
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'bookings'));
 
       customersUnsubscribe = onSnapshot(collection(db, 'customers'), (snapshot) => {
-        if (!snapshot.empty) {
-          setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
-        }
+        const customersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+        setCustomers(customersData);
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'customers'));
     }
 
@@ -156,6 +158,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const addCar = async (car: Car) => {
     try {
       await setDoc(doc(db, 'cars', car.id), car);
+      
+      // Notify all customers about the new car
+      if (customers.length > 0) {
+        const customerEmails = customers.map(c => c.email);
+        fetch(getApiUrl('notify-new-car'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            emails: customerEmails,
+            carName: `${car.brand} ${car.name}`,
+            carDetails: `Price: ${car.price}, Year: ${car.year}, Mileage: ${car.mileage}`,
+            carImage: car.mainImage
+          })
+        }).catch(e => console.error("Failed to send new car notification:", e));
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `cars/${car.id}`);
     }
@@ -189,7 +206,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       await setDoc(doc(db, 'bookings', booking.id), booking);
       
-      // Try to add customer, might fail if already exists and no update permission, which is fine
+      // Notify owner about the new booking
+      fetch(getApiUrl('notify-booking'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ownerEmail: settings.email || 'premsai58008@gmail.com',
+          bookingDetails: booking
+        })
+      }).catch(e => console.error("Failed to send booking notification:", e));
+
+      // Try to add customer
       const customerId = `c_${booking.email.replace(/[^a-zA-Z0-9]/g, '')}`;
       try {
         await setDoc(doc(db, 'customers', customerId), {
@@ -200,7 +227,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           registeredAt: new Date().toISOString()
         });
       } catch (e) {
-        // Ignore error if customer already exists
         console.log("Customer already exists or permission denied to update");
       }
     } catch (error) {
@@ -224,9 +250,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
   };
 
+  const login = (password: string) => {
+    // Simple password check - in a real app this would be more secure
+    // Using 'admin123' as a default password
+    const correctPassword = 'admin'; 
+    if (password === correctPassword) {
+      setIsAdmin(true);
+      localStorage.setItem('adminSession', 'true');
+      return true;
+    }
+    return false;
+  };
+
+  const logout = () => {
+    setIsAdmin(false);
+    localStorage.removeItem('adminSession');
+  };
+
   return (
     <AppContext.Provider value={{
-      cars, settings, bookings, customers, savedCars, user, isAdmin,
+      cars, settings, bookings, customers, savedCars, user, isAdmin, isAuthReady,
+      login, logout,
       addCar, updateCar, deleteCar, updateSettings, addBooking, updateBooking, toggleSavedCar
     }}>
       {children}

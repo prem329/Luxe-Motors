@@ -1,36 +1,23 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper Functions
-    function isAuthenticated() {
-      return request.auth != null;
-    }
+    // WARNING: These rules are simplified for development and use a client-side password.
+    // In a production app, you should use Firebase Auth and more restrictive rules.
     
-    function isAdmin() {
-      return isAuthenticated() && request.auth.token.email == "premsai58008@gmail.com";
-    }
-
-    // Public read access for cars and settings
     match /cars/{carId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
     match /settings/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
-    // Authenticated read/write for bookings and customers (Admin only)
-    // Anyone can create a booking
     match /bookings/{bookingId} {
-      allow create: if true;
-      allow read, update, delete: if isAdmin();
+      allow read, write: if true;
     }
 
     match /customers/{customerId} {
-      allow create: if true;
-      allow read, update, delete: if isAdmin();
+      allow read, write: if true;
     }
   }
 }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Send, Users, Mail, MessageSquare, Smartphone, CheckSquare, Square } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
+import { getApiUrl } from '../../utils/api';
 
 export const AdminBroadcast: React.FC = () => {
   const { customers } = useAppContext();
@@ -38,7 +39,9 @@ export const AdminBroadcast: React.FC = () => {
           .filter(c => selectedCustomers.includes(c.id))
           .map(c => c.email);
           
-        await fetch('/.netlify/functions/broadcast', {
+        const broadcastUrl = getApiUrl('broadcast');
+          
+        await fetch(broadcastUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

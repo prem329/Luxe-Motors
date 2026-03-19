@@ -24,8 +24,14 @@ export const AdminDashboard: React.FC = () => {
     .sort(([, a], [, b]) => (b as number) - (a as number))
     .slice(0, 4);
 
-  // Recent Bookings
-  const recentBookings = [...bookings].reverse().slice(0, 5);
+  // Recent Bookings - Sort by date and time descending
+  const recentBookings = [...bookings]
+    .sort((a, b) => {
+      const dateA = new Date(`${a.date} ${a.time}`);
+      const dateB = new Date(`${b.date} ${b.time}`);
+      return dateB.getTime() - dateA.getTime();
+    })
+    .slice(0, 5);
 
   return (
     <div className="space-y-8">
