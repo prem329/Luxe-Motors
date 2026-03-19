@@ -1,61 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { Car, DealershipSettings, Booking, Customer } from '../types';
-import { mockCars, initialSettings, mockBookings, mockCustomers } from '../data/mockData';
-import { db, auth } from '../firebase';
-import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDoc, query, orderBy } from 'firebase/firestore';
-import { onAuthStateChanged, User } from 'firebase/auth';
 import { getApiUrl } from '../utils/api';
-
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string;
-    email?: string | null;
-    emailVerified?: boolean;
-    isAnonymous?: boolean;
-    tenantId?: string | null;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
 
 interface AppContextType {
   cars: Car[];
@@ -63,34 +8,43 @@ interface AppContextType {
   bookings: Booking[];
   customers: Customer[];
   savedCars: string[];
-  user: User | null;
+  user: any | null;
   isAdmin: boolean;
   isAuthReady: boolean;
   login: (password: string) => boolean;
   logout: () => void;
-  addCar: (car: Car) => void;
-  updateCar: (car: Car) => void;
-  deleteCar: (id: string) => void;
-  updateSettings: (settings: DealershipSettings) => void;
-  addBooking: (booking: Booking) => void;
-  updateBooking: (booking: Booking) => void;
+  addCar: (car: Car) => Promise<void>;
+  updateCar: (car: Car) => Promise<void>;
+  deleteCar: (id: string) => Promise<void>;
+  updateSettings: (settings: DealershipSettings) => Promise<void>;
+  addBooking: (booking: Booking) => Promise<void>;
+  updateBooking: (booking: Booking) => Promise<void>;
   toggleSavedCar: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const emptySettings: DealershipSettings = {
+  address: '',
+  workingHours: '',
+  holidays: '',
+  workingDays: '',
+  phone: '',
+  email: '',
+  whatsapp: ''
+};
+
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [cars, setCars] = useState<Car[]>([]);
-  const [settings, setSettings] = useState<DealershipSettings>(initialSettings);
+  const [settings, setSettings] = useState<DealershipSettings>(emptySettings);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [savedCars, setSavedCars] = useState<string[]>([]);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<any | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
-    // Simple session persistence
     const adminSession = localStorage.getItem('adminSession');
     if (adminSession === 'true') {
       setIsAdmin(true);
@@ -98,147 +52,168 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setIsAuthReady(true);
   }, []);
 
+  const fetchData = async () => {
+    try {
+      const carsRes = await fetch(getApiUrl('getCars'));
+      if (carsRes.ok) setCars(await carsRes.json());
+      
+      const settingsRes = await fetch(getApiUrl('getSettings'));
+      if (settingsRes.ok) setSettings(await settingsRes.json());
+
+      if (isAdmin) {
+        const bookingsRes = await fetch(getApiUrl('getBookings'));
+        if (bookingsRes.ok) setBookings(await bookingsRes.json());
+
+        const customersRes = await fetch(getApiUrl('getCustomers'));
+        if (customersRes.ok) setCustomers(await customersRes.json());
+      }
+    } catch (e) {
+      console.error("Error fetching data:", e);
+    }
+  };
+
   useEffect(() => {
     if (!isAuthReady) return;
 
-    // Load Cars
-    const carsUnsubscribe = onSnapshot(collection(db, 'cars'), (snapshot) => {
-      const carsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Car));
-      // If Firestore is empty, we can optionally bootstrap with mock data
-      // but for now, let's just show what's in Firestore
-      setCars(carsData);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'cars');
-    });
+    fetchData();
 
-    // Load Settings
-    const settingsUnsubscribe = onSnapshot(doc(db, 'settings', 'main'), (docSnap) => {
-      if (docSnap.exists()) {
-        setSettings(docSnap.data() as DealershipSettings);
-      } else if (isAdmin) {
-        // Initialize settings if they don't exist, only if admin
-        setDoc(doc(db, 'settings', 'main'), initialSettings).catch((error) => {
-          handleFirestoreError(error, OperationType.CREATE, 'settings/main');
-        });
-      }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'settings/main');
-    });
-
-    let bookingsUnsubscribe = () => {};
-    let customersUnsubscribe = () => {};
-
-    // Load Bookings & Customers only for Admin
-    if (isAdmin) {
-      bookingsUnsubscribe = onSnapshot(collection(db, 'bookings'), (snapshot) => {
-        const bookingsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
-        setBookings(bookingsData);
-      }, (error) => handleFirestoreError(error, OperationType.LIST, 'bookings'));
-
-      customersUnsubscribe = onSnapshot(collection(db, 'customers'), (snapshot) => {
-        const customersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
-        setCustomers(customersData);
-      }, (error) => handleFirestoreError(error, OperationType.LIST, 'customers'));
-    }
-
-    // Load saved cars from local storage
     const saved = localStorage.getItem('savedCars');
     if (saved) {
       setSavedCars(JSON.parse(saved));
     }
-
-    return () => {
-      carsUnsubscribe();
-      settingsUnsubscribe();
-      bookingsUnsubscribe();
-      customersUnsubscribe();
-    };
   }, [isAuthReady, isAdmin]);
 
   const addCar = async (car: Car) => {
     try {
-      await setDoc(doc(db, 'cars', car.id), car);
-      
-      // Notify all customers about the new car
-      if (customers.length > 0) {
-        const customerEmails = customers.map(c => c.email);
-        fetch(getApiUrl('notify-new-car'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            emails: customerEmails,
-            carName: `${car.brand} ${car.name}`,
-            carDetails: `Price: ${car.price}, Year: ${car.year}, Mileage: ${car.mileage}`,
-            carImage: car.mainImage
-          })
-        }).catch(e => console.error("Failed to send new car notification:", e));
+      const res = await fetch(getApiUrl('addCar'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(car)
+      });
+      if (res.ok) {
+        setCars(prev => [...prev, car]);
+        if (customers.length > 0) {
+          const customerEmails = customers.map(c => c.email);
+          fetch(getApiUrl('notify-new-car'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              emails: customerEmails,
+              carName: `${car.brand} ${car.name}`,
+              carDetails: `Price: ${car.price}, Year: ${car.year}, Mileage: ${car.mileage}`,
+              carImage: car.mainImage
+            })
+          }).catch(e => console.error("Failed to send new car notification:", e));
+        }
+      } else {
+        throw new Error(await res.text());
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, `cars/${car.id}`);
+      console.error("Error adding car:", error);
     }
   };
   
   const updateCar = async (updatedCar: Car) => {
     try {
-      await updateDoc(doc(db, 'cars', updatedCar.id), updatedCar as any);
+      const res = await fetch(getApiUrl('updateCar'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedCar)
+      });
+      if (res.ok) {
+        setCars(prev => prev.map(c => c.id === updatedCar.id ? updatedCar : c));
+      } else {
+        throw new Error(await res.text());
+      }
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `cars/${updatedCar.id}`);
+       console.error("Error updating car:", error);
     }
   };
 
   const deleteCar = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'cars', id));
+      const res = await fetch(getApiUrl('deleteCar'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      if (res.ok) {
+        setCars(prev => prev.filter(c => c.id !== id));
+      } else {
+        throw new Error(await res.text());
+      }
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `cars/${id}`);
+      console.error("Error deleting car:", error);
     }
   };
 
   const updateSettings = async (newSettings: DealershipSettings) => {
     try {
-      await updateDoc(doc(db, 'settings', 'main'), newSettings as any);
+      const res = await fetch(getApiUrl('updateSettings'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSettings)
+      });
+      if (res.ok) {
+        setSettings(newSettings);
+      } else {
+        throw new Error(await res.text());
+      }
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'settings/main');
+      console.error("Error updating settings:", error);
     }
   };
 
   const addBooking = async (booking: Booking) => {
     try {
-      await setDoc(doc(db, 'bookings', booking.id), booking);
-      
-      // Notify owner about the new booking
-      fetch(getApiUrl('notify-booking'), {
+      const res = await fetch(getApiUrl('addBooking'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ownerEmail: settings.email || 'premsai58008@gmail.com',
-          bookingDetails: booking
-        })
-      }).catch(e => console.error("Failed to send booking notification:", e));
+        body: JSON.stringify(booking)
+      });
+      if (res.ok) {
+        setBookings(prev => [...prev, booking]);
+        const customerId = `c_${booking.email.replace(/[^a-zA-Z0-9]/g, '')}`;
+        if (!customers.find(c => c.id === customerId)) {
+           setCustomers(prev => [...prev, {
+             id: customerId,
+             name: booking.name,
+             email: booking.email,
+             phone: booking.mobile,
+             registeredAt: new Date().toISOString()
+           }]);
+        }
 
-      // Try to add customer
-      const customerId = `c_${booking.email.replace(/[^a-zA-Z0-9]/g, '')}`;
-      try {
-        await setDoc(doc(db, 'customers', customerId), {
-          id: customerId,
-          name: booking.name,
-          email: booking.email,
-          phone: booking.mobile,
-          registeredAt: new Date().toISOString()
-        });
-      } catch (e) {
-        console.log("Customer already exists or permission denied to update");
+        fetch(getApiUrl('notify-booking'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ownerEmail: settings.email || 'premsai58008@gmail.com',
+            bookingDetails: booking
+          })
+        }).catch(e => console.error("Failed to send booking notification:", e));
+      } else {
+        throw new Error(await res.text());
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, `bookings/${booking.id}`);
+      console.error("Error adding booking:", error);
     }
   };
 
   const updateBooking = async (updatedBooking: Booking) => {
     try {
-      await updateDoc(doc(db, 'bookings', updatedBooking.id), updatedBooking as any);
+      const res = await fetch(getApiUrl('updateBooking'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedBooking)
+      });
+      if (res.ok) {
+        setBookings(prev => prev.map(b => b.id === updatedBooking.id ? updatedBooking : b));
+      } else {
+        throw new Error(await res.text());
+      }
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `bookings/${updatedBooking.id}`);
+      console.error("Error updating booking:", error);
     }
   };
 
@@ -251,12 +226,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const login = (password: string) => {
-    // Simple password check - in a real app this would be more secure
-    // Using 'admin123' as a default password
-    const correctPassword = 'admin'; 
+    const correctPassword = import.meta.env.VITE_ADMIN_PASSWORD || 'admin'; 
     if (password === correctPassword) {
       setIsAdmin(true);
       localStorage.setItem('adminSession', 'true');
+      fetchData(); // Fetch admin data upon login
       return true;
     }
     return false;
